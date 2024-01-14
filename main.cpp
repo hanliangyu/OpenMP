@@ -97,12 +97,15 @@ bool TD::m_dump_terminate = false;
 void threaded_log(){
 
     std::vector<std::thread> threads;
-    auto check_dump_config = std::promise<bool>();
+    auto check_dump_config = std::promise<std::unordered_set<std::string>>();
     auto is_dump_enabled = check_dump_config.get_future();
     threads.emplace_back(&TD::ThreadedDump::init, TD::ThreadedDump(), std::move(check_dump_config));
 
-    if(is_dump_enabled.get()){
-        for(int j = 0; j < 20; j++){
+    std::chrono::steady_clock::time_point begin = std::chrono::steady_clock::now();
+    const auto dump_list = is_dump_enabled.get();
+
+    if(!dump_list.empty()){
+        for(int j = 0; j < 200; j++){
             for(int i = 0; i < 200; i++){
                 TD::m_dump_queue.safe_emplace_back({"tmp1.txt", std::to_string(i) + " xxxxxxxxxxxxxxx" +"\n"});
                 TD::m_dump_queue.safe_emplace_back({"tmp2.txt", std::to_string(i) + " xxxxxxxxxxxxxxx" +"\n"});
@@ -118,6 +121,9 @@ void threaded_log(){
     std::cout << "Main thread done, waiting for termination.." << "\n";
     TD::m_dump_terminate = true;
     threads[0].join();
+
+    std::chrono::steady_clock::time_point end = std::chrono::steady_clock::now();
+    std::cout << "Time difference = " << std::chrono::duration_cast<std::chrono::milliseconds>(end - begin).count() << "[ms]" << std::endl;
 }
 
 int main() {

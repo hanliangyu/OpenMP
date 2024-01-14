@@ -43,42 +43,44 @@ namespace TD{
 
     class ThreadedDump{
     public:
-        void init(std::promise<bool>&& check_dump_config){
-            if(!loadConfigFile()){
-                check_dump_config.set_value(false);
+        void init(std::promise<std::unordered_set<std::string>>&& check_dump_config){
+            std::unordered_set<std::string> active_files;
+            if(!loadConfigFile(active_files)){
+                check_dump_config.set_value(active_files);
                 return;
             }
-            check_dump_config.set_value(true);
+            check_dump_config.set_value(active_files);
             m_stream_map.reserve(100);
             while(true){
                 std::unique_lock<std::mutex> lk(m_dump_mutex);
-                m_dump_cv.wait(lk,[]{return (!m_dump_queue.empty() || m_dump_terminate);});
-                auto size = m_dump_queue.size(); // size might change while we process
-                while(size--){
-                    const auto dir = m_dump_queue.front().first;
-                    if(m_stream_map.count(dir) == 0){
-                        m_stream_map[dir] = std::ofstream();
-                        m_stream_map[dir].open(dir, std::ios::trunc);
-                        m_stream_map[dir] << "";
-                        m_stream_map[dir].close();
-                        m_stream_map[dir].open(dir, std::ios::app);
-                        m_stream_map[dir] << m_dump_queue.front().second;
+                // wakes up every 20ms
+                if(m_dump_cv.wait_for(lk, std::chrono::milliseconds (50),
+                                      []{return (!m_dump_queue.empty() || m_dump_terminate);}))
+                {
+                    auto size = m_dump_queue.size(); // size might change while we process
+                    while(size--){
+                        const auto dir = m_dump_queue.front().first;
+                        if(m_stream_map.count(dir) == 0){
+                            m_stream_map[dir] = std::ofstream();
+                            m_stream_map[dir].open(dir, std::ios::trunc);
+                            m_stream_map[dir].close();
+                            m_stream_map[dir].open(dir, std::ios::app);
+                            m_stream_map[dir] << m_dump_queue.front().second;
+                        }
+                        else{
+                            m_stream_map[dir] << m_dump_queue.front().second;
+                        }
+                        m_dump_queue.safe_pop_front();
                     }
-                    else{
-                        //std::cout << "Dump thread writes..." << "\n";
-                        m_stream_map[dir] << m_dump_queue.front().second;
+                    if(m_dump_terminate && m_dump_queue.empty()){
+                        std::cout << "Dump thread exit..." << "\n";
+                        return;
                     }
-                    m_dump_queue.safe_pop_front();
-                }
-
-                if(m_dump_terminate && m_dump_queue.empty()){
-                    std::cout << "Dump thread exit..." << "\n";
-                    return;
                 }
             }
         }
     private:
-        bool loadConfigFile(){
+        static bool loadConfigFile(std::unordered_set<std::string> &active_files){
             std::ifstream config_reader(CONFIG_FILE_PATH);
             if(config_reader.fail()){
                 // no config file
@@ -91,9 +93,9 @@ namespace TD{
                 while(std::getline(config_reader, line)){
                     ss.clear();
                     ss.str(line);
-                    if(ss >> file_name >> status && m_active_files.count(file_name) == 0){
+                    if(ss >> file_name >> status && active_files.count(file_name) == 0){
                         std::cout << file_name << " " << status << "\n";
-                        m_active_files.insert(file_name);
+                        active_files.insert(file_name);
                     }
                     else{
                         std::cout << "Unmatched line" << "\n";
@@ -103,7 +105,6 @@ namespace TD{
             return true;
         }
         std::unordered_map<std::string, std::ofstream> m_stream_map;
-        std::unordered_set<std::string> m_active_files;
     };
 }
 
