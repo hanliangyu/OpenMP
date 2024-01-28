@@ -8,6 +8,7 @@
 #include <iostream>
 #include <deque>
 #include <chrono>
+#include <memory>
 #include <mutex>
 #include <future>
 #include <string>
@@ -22,6 +23,7 @@
 
 namespace TD{
     struct TDQueue;
+    class ThreadedDumpPool;
     extern TDQueue m_dump_queue;
     extern std::mutex m_dump_mutex;
     extern std::condition_variable m_dump_cv;
@@ -30,8 +32,14 @@ namespace TD{
     struct TDQueue: public std::deque<std::pair<std::string, std::string>>{
     public:
         void safe_emplace_back(const std::pair<std::string, std::string>& data){
-            std::lock_guard<std::mutex>lk(m_q_mutex);
-            this->emplace_back(data);
+            while(true){
+                std::lock_guard<std::mutex>lk(m_q_mutex);
+                if(this->size() <= 500){
+                    // If the dump thread is slow, stall the main thread
+                    this->emplace_back(data);
+                    return;
+                }
+            }
         }
         void safe_pop_front(){
             std::lock_guard<std::mutex>lk(m_q_mutex);
@@ -43,42 +51,7 @@ namespace TD{
 
     class ThreadedDump{
     public:
-        void init(std::promise<std::unordered_set<std::string>>&& check_dump_config){
-            std::unordered_set<std::string> active_files;
-            if(!loadConfigFile(active_files)){
-                check_dump_config.set_value(active_files);
-                return;
-            }
-            check_dump_config.set_value(active_files);
-            m_stream_map.reserve(100);
-            while(true){
-                std::unique_lock<std::mutex> lk(m_dump_mutex);
-                // wakes up every 20ms
-                if(m_dump_cv.wait_for(lk, std::chrono::milliseconds (50),
-                                      []{return (!m_dump_queue.empty() || m_dump_terminate);}))
-                {
-                    auto size = m_dump_queue.size(); // size might change while we process
-                    while(size--){
-                        const auto dir = m_dump_queue.front().first;
-                        if(m_stream_map.count(dir) == 0){
-                            m_stream_map[dir] = std::ofstream();
-                            m_stream_map[dir].open(dir, std::ios::trunc);
-                            m_stream_map[dir].close();
-                            m_stream_map[dir].open(dir, std::ios::app);
-                            m_stream_map[dir] << m_dump_queue.front().second;
-                        }
-                        else{
-                            m_stream_map[dir] << m_dump_queue.front().second;
-                        }
-                        m_dump_queue.safe_pop_front();
-                    }
-                    if(m_dump_terminate && m_dump_queue.empty()){
-                        std::cout << "Dump thread exit..." << "\n";
-                        return;
-                    }
-                }
-            }
-        }
+        void init();
     private:
         static bool loadConfigFile(std::unordered_set<std::string> &active_files){
             std::ifstream config_reader(CONFIG_FILE_PATH);
@@ -104,8 +77,52 @@ namespace TD{
             }
             return true;
         }
-        std::unordered_map<std::string, std::ofstream> m_stream_map;
+        std::map<std::string, std::ofstream> m_stream_map;
+        uint64_t m_id = 0;
     };
+
+    class ThreadedDumpPool{
+    public:
+        ThreadedDumpPool(){
+            for(int i = 0; i< thread_num; i++){
+                m_pool.emplace_back(&TD::ThreadedDump::init, TD::ThreadedDump());
+            }
+        }
+        static ThreadedDumpPool* get(){
+            std::call_once(m_flag, ThreadedDumpPool::init);
+            return m_instance.get();
+        }
+        void registerThreadID(uint64_t id){
+            std::lock_guard<std::mutex>lk(m_pool_mutex);
+            m_thread_id.push_back(id);
+            std::cout << "Register thread id: " << id << std::endl;
+        }
+        void submit(const std::string& dir, const std::string& text){
+            if(m_DtoT_mapping.count(dir) == 0){
+                // new file
+                m_file_count++;
+                m_DtoT_mapping.insert({dir, m_file_count % thread_num}); // round-robin allocate
+            }
+
+        }
+        using threadJobType = std::pair<std::string, std::string>;
+        threadJobType queryJob(uint64_t thread_id){ // each thread query for jobs
+
+        }
+    private:
+        static void init(){
+            m_instance = std::make_unique<ThreadedDumpPool>();
+        }
+        static const int thread_num = 4;
+        static std::once_flag m_flag;
+        static std::unique_ptr<ThreadedDumpPool> m_instance;
+        std::vector<std::thread>m_pool;
+        std::vector<uint64_t>m_thread_id;
+        std::unordered_map<std::string, int> m_DtoT_mapping;
+        std::mutex m_pool_mutex;
+        int m_file_count = 0;
+    };
+
 }
 
 

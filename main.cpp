@@ -6,6 +6,7 @@
 #include "/usr/local/opt/libomp/include/omp.h"
 #include "Factory.h"
 #include "ThreadedDump.h"
+#include "ParallelLib.h"
 
 //// OPENMP
 void ParallelPrint(){
@@ -89,38 +90,63 @@ void CRTPExample(){
 
 }
 
-TD::TDQueue TD::m_dump_queue; // des, data
-std::mutex TD::m_dump_mutex;
-std::condition_variable TD::m_dump_cv;
 bool TD::m_dump_terminate = false;
+std::unique_ptr<TD::ThreadedDumpPool> TD::ThreadedDumpPool::m_instance = nullptr;
+std::once_flag TD::ThreadedDumpPool::m_flag;
+
+void TD::ThreadedDump::init() {
+    m_id = std::hash<std::thread::id>{}(std::this_thread::get_id());
+    TD::ThreadedDumpPool::get()->registerThreadID(m_id);
+    while(true){
+        std::unique_lock<std::mutex> lk(m_dump_mutex);
+        // wakes up every 20ms
+        if(m_dump_cv.wait_for(lk, std::chrono::milliseconds (50),
+                              []{return (!m_dump_queue.empty() || m_dump_terminate);}))
+        {
+            auto size = m_dump_queue.size(); // size might change while we process
+            while(size--){
+                const auto dir = m_dump_queue.front().first;
+                if(m_stream_map.count(dir) == 0){
+                    m_stream_map[dir] = std::ofstream();
+                    m_stream_map[dir].open(dir, std::ios::trunc);
+                    m_stream_map[dir].close();
+                    m_stream_map[dir].open(dir, std::ios::app);
+                    m_stream_map[dir] << m_dump_queue.front().second;
+                }
+                else{
+                    m_stream_map[dir] << m_dump_queue.front().second;
+                }
+                m_dump_queue.safe_pop_front();
+            }
+            if(m_dump_terminate && m_dump_queue.empty()){
+                std::cout << "Dump thread exit..." << "\n";
+                return;
+            }
+        }
+    }
+}
 
 void threaded_log(){
 
-    std::vector<std::thread> threads;
-    auto check_dump_config = std::promise<std::unordered_set<std::string>>();
-    auto is_dump_enabled = check_dump_config.get_future();
-    threads.emplace_back(&TD::ThreadedDump::init, TD::ThreadedDump(), std::move(check_dump_config));
-
     std::chrono::steady_clock::time_point begin = std::chrono::steady_clock::now();
-    const auto dump_list = is_dump_enabled.get();
 
-    if(!dump_list.empty()){
-        for(int j = 0; j < 200; j++){
-            for(int i = 0; i < 200; i++){
-                TD::m_dump_queue.safe_emplace_back({"tmp1.txt", std::to_string(i) + " xxxxxxxxxxxxxxx" +"\n"});
-                TD::m_dump_queue.safe_emplace_back({"tmp2.txt", std::to_string(i) + " xxxxxxxxxxxxxxx" +"\n"});
-                TD::m_dump_queue.safe_emplace_back({"tmp3.txt", std::to_string(i) + " xxxxxxxxxxxxxxx" +"\n"});
-                TD::m_dump_queue.safe_emplace_back({"tmp4.txt", std::to_string(i) + " xxxxxxxxxxxxxxx" +"\n"});
-            }
-            std::cout << TD::m_dump_queue.size() << "\n";
-        }
-    }
-    else{
-        std::cout << "Dump not enabled.." << "\n";
-    }
+
+
+//    if(!dump_list.empty()){
+//        for(int j = 0; j < 200; j++){
+//            for(int i = 0; i < 200; i++){
+//                TD::m_dump_queue.safe_emplace_back({"tmp1.txt", std::to_string(i) + " xxxxxxxxxxxxxxx" +"\n"});
+//                TD::m_dump_queue.safe_emplace_back({"tmp2.txt", std::to_string(i) + " xxxxxxxxxxxxxxx" +"\n"});
+//                TD::m_dump_queue.safe_emplace_back({"tmp3.txt", std::to_string(i) + " xxxxxxxxxxxxxxx" +"\n"});
+//                TD::m_dump_queue.safe_emplace_back({"tmp4.txt", std::to_string(i) + " xxxxxxxxxxxxxxx" +"\n"});
+//            }
+//            std::cout << TD::m_dump_queue.size() << "\n";
+//        }
+//    }
+//    else{
+//        std::cout << "Dump not enabled.." << "\n";
+//    }
     std::cout << "Main thread done, waiting for termination.." << "\n";
-    TD::m_dump_terminate = true;
-    threads[0].join();
 
     std::chrono::steady_clock::time_point end = std::chrono::steady_clock::now();
     std::cout << "Time difference = " << std::chrono::duration_cast<std::chrono::milliseconds>(end - begin).count() << "[ms]" << std::endl;
