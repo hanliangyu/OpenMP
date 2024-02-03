@@ -6,6 +6,9 @@
 #include <vector>
 #include <deque>
 #include <memory>
+#include <future>
+#include <iostream>
+#include <array>
 
 #ifndef OPENMP_FACTORY_H
 #define OPENMP_FACTORY_H

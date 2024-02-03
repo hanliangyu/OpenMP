@@ -1,11 +1,7 @@
-#include <iostream>
-#include <vector>
-#include <future>
-#include <thread>
-#include <array>
+
 #include "/usr/local/opt/libomp/include/omp.h"
 #include "Factory.h"
-#include "ThreadedDump.h"
+//#include "ThreadedDump.h"
 #include "ParallelLib.h"
 
 //// OPENMP
@@ -90,71 +86,56 @@ void CRTPExample(){
 
 }
 
-bool TD::m_dump_terminate = false;
-std::unique_ptr<TD::ThreadedDumpPool> TD::ThreadedDumpPool::m_instance = nullptr;
-std::once_flag TD::ThreadedDumpPool::m_flag;
-
-void TD::ThreadedDump::init() {
-    m_id = std::hash<std::thread::id>{}(std::this_thread::get_id());
-    TD::ThreadedDumpPool::get()->registerThreadID(m_id);
-    while(true){
-        std::unique_lock<std::mutex> lk(m_dump_mutex);
-        // wakes up every 20ms
-        if(m_dump_cv.wait_for(lk, std::chrono::milliseconds (50),
-                              []{return (!m_dump_queue.empty() || m_dump_terminate);}))
-        {
-            auto size = m_dump_queue.size(); // size might change while we process
-            while(size--){
-                const auto dir = m_dump_queue.front().first;
-                if(m_stream_map.count(dir) == 0){
-                    m_stream_map[dir] = std::ofstream();
-                    m_stream_map[dir].open(dir, std::ios::trunc);
-                    m_stream_map[dir].close();
-                    m_stream_map[dir].open(dir, std::ios::app);
-                    m_stream_map[dir] << m_dump_queue.front().second;
-                }
-                else{
-                    m_stream_map[dir] << m_dump_queue.front().second;
-                }
-                m_dump_queue.safe_pop_front();
-            }
-            if(m_dump_terminate && m_dump_queue.empty()){
-                std::cout << "Dump thread exit..." << "\n";
-                return;
-            }
-        }
-    }
-}
-
-void threaded_log(){
-
-    std::chrono::steady_clock::time_point begin = std::chrono::steady_clock::now();
-
-
-
-//    if(!dump_list.empty()){
-//        for(int j = 0; j < 200; j++){
-//            for(int i = 0; i < 200; i++){
-//                TD::m_dump_queue.safe_emplace_back({"tmp1.txt", std::to_string(i) + " xxxxxxxxxxxxxxx" +"\n"});
-//                TD::m_dump_queue.safe_emplace_back({"tmp2.txt", std::to_string(i) + " xxxxxxxxxxxxxxx" +"\n"});
-//                TD::m_dump_queue.safe_emplace_back({"tmp3.txt", std::to_string(i) + " xxxxxxxxxxxxxxx" +"\n"});
-//                TD::m_dump_queue.safe_emplace_back({"tmp4.txt", std::to_string(i) + " xxxxxxxxxxxxxxx" +"\n"});
-//            }
-//            std::cout << TD::m_dump_queue.size() << "\n";
-//        }
-//    }
-//    else{
-//        std::cout << "Dump not enabled.." << "\n";
-//    }
-    std::cout << "Main thread done, waiting for termination.." << "\n";
-
-    std::chrono::steady_clock::time_point end = std::chrono::steady_clock::now();
-    std::cout << "Time difference = " << std::chrono::duration_cast<std::chrono::milliseconds>(end - begin).count() << "[ms]" << std::endl;
-}
-
 int main() {
     //CRTPExample();
     //compactMemoryAllocation();
-    threaded_log();
+    //threaded_log();
+
+    constexpr int numThreads = 5; // Specify the desired number of threads
+
+    Module m1, m2, m3, m4, m5, m6, m7, m8, m9, m10, m11, m12, m13, m14;
+    ThreadPoolOp threadPool;
+    threadPool.registerModule(&m1);
+    threadPool.registerModule(&m2);
+    threadPool.registerModule(&m3);
+    threadPool.registerModule(&m4);
+    threadPool.registerModule(&m5);
+    threadPool.registerModule(&m6);
+    threadPool.registerModule(&m7);
+    threadPool.registerModule(&m8);
+    threadPool.registerModule(&m9);
+    threadPool.registerModule(&m10);
+    threadPool.registerModule(&m11);
+    threadPool.registerModule(&m12);
+    threadPool.registerModule(&m13);
+    threadPool.registerModule(&m14);
+
+    int count = 0;
+    double time = 0;
+    int total_cycle = 500;
+
+    // Send the signal multiple times
+    for (int i = 0; i < total_cycle; ++i) {
+
+        auto t1 = std::chrono::high_resolution_clock::now();
+        threadPool.run();
+        auto t2 = std::chrono::high_resolution_clock::now();
+        auto ms_int = std::chrono::duration_cast<std::chrono::milliseconds>(t2 - t1);
+
+        time += ms_int.count();
+        count++;
+
+        int tmp = static_cast<int>(rand() / double(RAND_MAX) * 2);
+        std::this_thread::sleep_for(std::chrono::milliseconds (tmp));
+
+        if(count % 100 == 0){
+            std::cout << "CYCLE: " << count << "\n";
+        }
+        if(count % total_cycle == 0){
+            std::cout << "AVERAGE TIME: " << time / total_cycle << "\n";
+            time = 0;
+        }
+    }
+
     return 0;
 }

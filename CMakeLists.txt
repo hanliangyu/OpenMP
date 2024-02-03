@@ -8,6 +8,9 @@
 cmake_minimum_required(VERSION 3.12)
 project(OpenMP)
 
+FIND_PACKAGE( Boost COMPONENTS program_options REQUIRED )
+INCLUDE_DIRECTORIES( ${Boost_INCLUDE_DIR} )
+
 set(CMAKE_CXX_STANDARD 14)
 
 set(CMAKE_C_COMPILER "/usr/bin/gcc") #这里写你的gcc路径
