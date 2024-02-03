@@ -68,9 +68,9 @@ private:
 class Module{
 public:
     void Run(int threadIndex){
-        int time = static_cast<int>(rand() / double(RAND_MAX) * 5);
-        std::this_thread::sleep_for(std::chrono::milliseconds (1+time));
-        //std::string tmp = "Thread id " + std::to_string(threadIndex) + " sleeps for " + std::to_string(5+time) + " ms";
+        int time = static_cast<int>(rand() / double(RAND_MAX) * 400);
+        std::this_thread::sleep_for(std::chrono::microseconds (time));
+        //std::string tmp = "Thread id " + std::to_string(threadIndex) + " sleeps for " + std::to_string(time) + " ms";
         //std::cout << tmp << std::endl;
     }
 };
@@ -176,9 +176,11 @@ public:
         // initiate threads
         lk.lock();
         //assert(!std::any_of(signals.begin(), signals.end(),[](int &m_state){return m_state;}));
-        std::fill(signals.begin(), signals.end(), 1);
-        sum = count;
+        memset(signals.data(), 1, sizeof(int)*signals.size());
+        //std::fill(signals.begin(), signals.end(), 1);
         lk.unlock();
+        sum.store(count, std::memory_order_release);
+        //lk.unlock();
         barrier();
         //std::cout << "=================" << std::endl;
     }
@@ -193,18 +195,19 @@ public:
 private:
     void barrier(){
         // spin lock to sync all threads
-        while(true){
-            lk.lock();
-            if(sum != 0)
-            {
-                lk.unlock();
-                continue;
-            }
-            else{
-                lk.unlock();
-                break;
-            }
-        }
+        while(sum.load(std::memory_order_acquire) != 0){}
+//        while(true){
+//            //lk.lock();
+//            if(sum.load() != 0)
+//            {
+//                //lk.unlock();
+//                continue;
+//            }
+//            else{
+//                //lk.unlock();
+//                break;
+//            }
+//        }
     }
 
     void threadProcess(Module* module, int threadIndex) {
@@ -215,14 +218,14 @@ private:
             }
             lk.lock();
             start = signals[threadIndex];
+            if(start){
+                signals[threadIndex] = 0;
+            }
             lk.unlock();
 
             if(start){
                 module->Run(threadIndex);
-                lk.lock();
-                signals[threadIndex] = 0;
-                sum--;
-                lk.unlock();
+                sum.fetch_sub(1, std::memory_order_release);
             }
         }
     }
@@ -233,7 +236,7 @@ private:
     std::atomic<bool> running{true};
     SpinLock lk;
     int count = 0;
-    int sum = 0;
+    std::atomic<int> sum{0};
 };
 
 #endif //OPENMP_PARALLELLIB_H

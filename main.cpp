@@ -103,16 +103,16 @@ int main() {
     threadPool.registerModule(&m6);
     threadPool.registerModule(&m7);
     threadPool.registerModule(&m8);
-    threadPool.registerModule(&m9);
-    threadPool.registerModule(&m10);
-    threadPool.registerModule(&m11);
-    threadPool.registerModule(&m12);
-    threadPool.registerModule(&m13);
-    threadPool.registerModule(&m14);
+//    threadPool.registerModule(&m9);
+//    threadPool.registerModule(&m10);
+//    threadPool.registerModule(&m11);
+//    threadPool.registerModule(&m12);
+//    threadPool.registerModule(&m13);
+//    threadPool.registerModule(&m14);
 
     int count = 0;
     double time = 0;
-    int total_cycle = 500;
+    int total_cycle = 10000;
 
     // Send the signal multiple times
     for (int i = 0; i < total_cycle; ++i) {
@@ -120,7 +120,7 @@ int main() {
         auto t1 = std::chrono::high_resolution_clock::now();
         threadPool.run();
         auto t2 = std::chrono::high_resolution_clock::now();
-        auto ms_int = std::chrono::duration_cast<std::chrono::milliseconds>(t2 - t1);
+        auto ms_int = std::chrono::duration_cast<std::chrono::microseconds>(t2 - t1);
 
         time += ms_int.count();
         count++;
