@@ -11,7 +11,7 @@ project(OpenMP)
 FIND_PACKAGE( Boost COMPONENTS program_options REQUIRED )
 INCLUDE_DIRECTORIES( ${Boost_INCLUDE_DIR} )
 
-set(CMAKE_CXX_STANDARD 14)
+set(CMAKE_CXX_STANDARD 11)
 
 set(CMAKE_C_COMPILER "/usr/bin/gcc") #这里写你的gcc路径
 set(CMAKE_CXX_COMPILER "/usr/bin/g++") #这里写你的g++路径

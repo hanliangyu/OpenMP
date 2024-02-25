@@ -68,7 +68,7 @@ private:
 class Module{
 public:
     void Run(int threadIndex){
-        int time = static_cast<int>(rand() / double(RAND_MAX) * 400);
+        int time = static_cast<int>(rand() / double(RAND_MAX) * 500);
         std::this_thread::sleep_for(std::chrono::microseconds (time));
         //std::string tmp = "Thread id " + std::to_string(threadIndex) + " sleeps for " + std::to_string(time) + " ms";
         //std::cout << tmp << std::endl;
@@ -167,65 +167,58 @@ public:
     explicit ThreadPoolOp() : running(true){}
 
     void registerModule(Module* module){
-        threads.emplace_back(&ThreadPoolOp::threadProcess, this, module, count);
         signals.emplace_back(0);
+        threads.emplace_back(&ThreadPoolOp::threadProcess, this, module, count);
         count++;
     }
 
     void run() {
         // initiate threads
-        lk.lock();
-        //assert(!std::any_of(signals.begin(), signals.end(),[](int &m_state){return m_state;}));
-        memset(signals.data(), 1, sizeof(int)*signals.size());
-        //std::fill(signals.begin(), signals.end(), 1);
-        lk.unlock();
+        assert(sum.load() == 0);
         sum.store(count, std::memory_order_release);
-        //lk.unlock();
-        barrier();
+
+        std::unique_lock<std::mutex>lk2(mutex);
+        std::fill(signals.begin(), signals.begin()+count, 1);
+        flag = true;
+        cv.notify_all();
+
+        while(flag){
+            cv.wait(lk2);
+        }
         //std::cout << "=================" << std::endl;
     }
 
     ~ThreadPoolOp() {
         running = false;
+        std::fill(signals.begin(), signals.begin()+count, 1);
+        cv.notify_all();
         for (std::thread& thread : threads) {
             thread.join(); // Wait for all threads to exit
         }
     }
 
 private:
-    void barrier(){
-        // spin lock to sync all threads
-        while(sum.load(std::memory_order_acquire) != 0){}
-//        while(true){
-//            //lk.lock();
-//            if(sum.load() != 0)
-//            {
-//                //lk.unlock();
-//                continue;
-//            }
-//            else{
-//                //lk.unlock();
-//                break;
-//            }
-//        }
-    }
-
     void threadProcess(Module* module, int threadIndex) {
-        bool start;
         while(true) {
+            std::unique_lock<std::mutex> lk2(mutex);
+            while(!signals[threadIndex]){
+                cv.wait(lk2);
+            }
+            signals[threadIndex] = false;
+            lk2.unlock();
+
             if (!running) {
                 return;
             }
-            lk.lock();
-            start = signals[threadIndex];
-            if(start){
-                signals[threadIndex] = 0;
-            }
-            lk.unlock();
 
-            if(start){
-                module->Run(threadIndex);
-                sum.fetch_sub(1, std::memory_order_release);
+            module->Run(threadIndex);
+            int before = sum.fetch_sub(1, std::memory_order_release);
+            if (before == 1) {
+                {
+                    lk2.lock();
+                    flag = false;
+                    cv.notify_all();
+                }
             }
         }
     }
@@ -237,6 +230,9 @@ private:
     SpinLock lk;
     int count = 0;
     std::atomic<int> sum{0};
+    std::condition_variable cv;
+    std::mutex mutex;
+    bool flag = false;
 };
 
 #endif //OPENMP_PARALLELLIB_H

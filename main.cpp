@@ -3,6 +3,7 @@
 #include "Factory.h"
 //#include "ThreadedDump.h"
 #include "ParallelLib.h"
+#include "LockFreeFifo.h"
 
 //// OPENMP
 void ParallelPrint(){
@@ -85,57 +86,63 @@ void CRTPExample(){
     }
 
 }
-
-int main() {
-    //CRTPExample();
-    //compactMemoryAllocation();
-    //threaded_log();
-
-    constexpr int numThreads = 5; // Specify the desired number of threads
-
-    Module m1, m2, m3, m4, m5, m6, m7, m8, m9, m10, m11, m12, m13, m14;
-    ThreadPoolOp threadPool;
-    threadPool.registerModule(&m1);
-    threadPool.registerModule(&m2);
-    threadPool.registerModule(&m3);
-    threadPool.registerModule(&m4);
-    threadPool.registerModule(&m5);
-    threadPool.registerModule(&m6);
-    threadPool.registerModule(&m7);
-    threadPool.registerModule(&m8);
+//
+//void parallelRun(){
+//    constexpr int numThreads = 5; // Specify the desired number of threads
+//
+//    Module m1, m2, m3, m4, m5, m6, m7, m8, m9, m10, m11, m12, m13, m14;
+//    ThreadPoolOp threadPool;
+//    threadPool.registerModule(&m1);
+//    threadPool.registerModule(&m2);
+//    threadPool.registerModule(&m3);
+//    threadPool.registerModule(&m4);
+//    threadPool.registerModule(&m5);
+//    threadPool.registerModule(&m6);
+//    threadPool.registerModule(&m7);
+//    threadPool.registerModule(&m8);
 //    threadPool.registerModule(&m9);
 //    threadPool.registerModule(&m10);
 //    threadPool.registerModule(&m11);
 //    threadPool.registerModule(&m12);
 //    threadPool.registerModule(&m13);
 //    threadPool.registerModule(&m14);
+//
+//    int count = 0;
+//    double time = 0;
+//    int total_cycle = 10000;
+//
+//    // Send the signal multiple times
+//    for (int i = 0; i < total_cycle; ++i) {
+//
+//        auto t1 = std::chrono::high_resolution_clock::now();
+//        threadPool.run();
+//        auto t2 = std::chrono::high_resolution_clock::now();
+//        auto ms_int = std::chrono::duration_cast<std::chrono::microseconds>(t2 - t1);
+//
+//        time += ms_int.count();
+//        count++;
+//
+//        int tmp = static_cast<int>(rand() / double(RAND_MAX) * 2);
+//        std::this_thread::sleep_for(std::chrono::milliseconds (tmp));
+//
+//        if(count % 100 == 0){
+//            std::cout << "CYCLE: " << count << "\n";
+//        }
+//        if(count % total_cycle == 0){
+//            std::cout << "AVERAGE TIME: " << time / total_cycle << "\n";
+//            time = 0;
+//        }
+//    }
+//}
+//
 
-    int count = 0;
-    double time = 0;
-    int total_cycle = 10000;
 
-    // Send the signal multiple times
-    for (int i = 0; i < total_cycle; ++i) {
+int main() {
+    //CRTPExample();
+    //compactMemoryAllocation();
+    //threaded_log();
 
-        auto t1 = std::chrono::high_resolution_clock::now();
-        threadPool.run();
-        auto t2 = std::chrono::high_resolution_clock::now();
-        auto ms_int = std::chrono::duration_cast<std::chrono::microseconds>(t2 - t1);
-
-        time += ms_int.count();
-        count++;
-
-        int tmp = static_cast<int>(rand() / double(RAND_MAX) * 2);
-        std::this_thread::sleep_for(std::chrono::milliseconds (tmp));
-
-        if(count % 100 == 0){
-            std::cout << "CYCLE: " << count << "\n";
-        }
-        if(count % total_cycle == 0){
-            std::cout << "AVERAGE TIME: " << time / total_cycle << "\n";
-            time = 0;
-        }
-    }
+    Fifo4<uint64_t> fifo(1000);
 
     return 0;
 }

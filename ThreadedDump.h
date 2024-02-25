@@ -111,7 +111,7 @@ namespace TD{
         }
     private:
         static void init(){
-            m_instance = std::make_unique<ThreadedDumpPool>();
+            m_instance.reset(new ThreadedDumpPool());
         }
         static const int thread_num = 4;
         static std::once_flag m_flag;
@@ -125,5 +125,55 @@ namespace TD{
 
 }
 
+/// Multiple writers from multiple threads to multiple readers on multiple threads
+namespace PTD{ // parallel thread dump
+    const int thread_num = 3;
+
+    struct DumpQueue{
+    public:
+        void dump(){
+            std::lock_guard<std::mutex>lg(m_q_mutex);
+            while(!m_q.empty()){
+
+                m_q.pop_front();
+            }
+        }
+        bool empty(){
+            std::lock_guard<std::mutex>lg(m_q_mutex);
+            return m_q.empty();
+        }
+    private:
+        std::deque<std::pair<std::string, std::string>> m_q;
+        std::mutex m_q_mutex;
+        std::condition_variable m_q_cv;
+    };
+
+    class ThreadedDumpPool{
+    public:
+        ThreadedDumpPool(): m_running(true){
+            for(int i = 0; i < PTD::thread_num; i++){
+                m_threads.emplace_back(&ThreadedDumpPool::threadProcess, i);
+            }
+        }
+
+    private:
+        void threadProcess(int threadID){
+            while(true){
+                std::unique_lock<std::mutex> lk(m_mutex);
+                m_cv.wait(lk, !m_qs[threadID].empty());
+                if(!m_running) return;
+                lk.unlock();
+
+                m_qs[threadID].dump(); // threadID access is unique to each thread
+
+            }
+        }
+        std::vector<std::thread> m_threads;
+        std::vector<DumpQueue> m_qs;
+        std::mutex m_mutex;
+        std::condition_variable m_cv;
+        bool m_running;
+    };
+}
 
 #endif //OPENMP_THREADEDDUMP_H
